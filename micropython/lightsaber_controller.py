@@ -15,6 +15,7 @@ class LightSaberController:
 
     def __init__(self, lc, mc, cc, sc):
         self.lc = lc
+        self.lc.set_color(cc.current_font.color)
         self.mc = mc
         self.cc = cc
         self.sc = sc
@@ -73,6 +74,7 @@ class LightSaberController:
     def next(self):
         print("Setting Next")
         self.cc.set_next_font()
+        self.lc.set_color(self.cc.current_font.color)
         # get color sound and animation
         # set color sound and animation
         pass
@@ -80,6 +82,7 @@ class LightSaberController:
     def previous(self):
         print("Setting Previous")
         self.cc.set_previous_font()
+        self.lc.set_color(self.cc.current_font.color)
         # get color sound and animation
         # set color sound and animation
         pass

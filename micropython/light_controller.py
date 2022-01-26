@@ -5,24 +5,23 @@ import neopixel
 OPEN_CLOSE_TIME = 0.2
 
 
-class LightController:
+class LightStripController:
 
-    def __init__(self, pin, pixels, cc) -> None:
+    def __init__(self, pin, pixels) -> None:
         self.pin = Pin(pin, Pin.OUT)
         self.pixel_count = pixels
         self.np = neopixel.NeoPixel(self.pin, self.pixel_count)
-        self.cc = cc
 
         self.open_time = OPEN_CLOSE_TIME  # time to open or close
         # time per pixel on open or close
         self.pixel_delay = int(self.open_time/self.pixel_count*1000)
-
         self.white_color = (255, 255, 255)
+        self.current_color = self.white_color
 
     def open(self):
         self.np.write()
         for i in range(self.pixel_count):
-            self.np[i] = self.cc.current_font.color
+            self.np[i] = self.current_color
             self.np.write()
             time.sleep_ms(self.pixel_delay)
 
@@ -32,6 +31,9 @@ class LightController:
             self.np.write()
             time.sleep_ms(self.pixel_delay)
 
+    def set_color(self, color):
+        self.current_color = color
+
     def fill_color(self, color):
         for i in range(self.pixel_count):
             self.np[i] = color
@@ -40,7 +42,7 @@ class LightController:
     def flash_white(self):
         self.fill_color(self.white_color)
         time.sleep_ms(self.pixel_delay)
-        self.fill_color(self.cc.current_font.color)
+        self.fill_color(self.current_color)
         pass
 
     def idle(self):
@@ -55,7 +57,7 @@ class LightController:
         pass
 
     def unlock(self):
-        self.fill_color(self.cc.current_font.color)
+        self.fill_color(self.current_color)
         pass
 
     def move(self):
