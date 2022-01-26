@@ -1,0 +1,22 @@
+{
+  "upload": {
+    "port": "/dev/cu.SLAB_USBtoUART",
+    "baud": 1000000
+  },
+  "serial": {
+    "port": "/dev/cu.SLAB_USBtoUART",
+    "baud": 1000000
+  },
+  "ignore": {
+    "extensions": [
+      ".micropythonrc"
+    ],
+    "directories": [
+      ".vscode"
+    ]
+  },
+  "tools": {
+    "ampy": "/Users/brendenvogt/opt/anaconda3/bin/ampy",
+    "rshell": "/Users/brendenvogt/opt/anaconda3/bin/rshell"
+  }
+}

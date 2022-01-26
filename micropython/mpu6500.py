@@ -88,7 +88,7 @@ class MPU6500:
 
     def __init__(
         self, i2c, address=0x68,
-        accel_fs=ACCEL_FS_SEL_2G, gyro_fs=GYRO_FS_SEL_250DPS,
+        accel_fs=ACCEL_FS_SEL_16G, gyro_fs=GYRO_FS_SEL_2000DPS,
         accel_sf=SF_M_S2, gyro_sf=SF_RAD_S,
         gyro_offset=(0, 0, 0)
     ):

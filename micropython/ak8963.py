@@ -49,8 +49,8 @@ _ASAZ = const(0x12)
 
 _MODE_POWER_DOWN = 0b00000000
 MODE_SINGLE_MEASURE = 0b00000001
-MODE_CONTINOUS_MEASURE_1 = 0b00000010 # 8Hz
-MODE_CONTINOUS_MEASURE_2 = 0b00000110 # 100Hz
+MODE_CONTINOUS_MEASURE_1 = 0b00000010  # 8Hz
+MODE_CONTINOUS_MEASURE_2 = 0b00000110  # 100Hz
 MODE_EXTERNAL_TRIGGER_MEASURE = 0b00000100
 _MODE_SELF_TEST = 0b00001000
 _MODE_FUSE_ROM_ACCESS = 0b00001111
@@ -58,14 +58,16 @@ _MODE_FUSE_ROM_ACCESS = 0b00001111
 OUTPUT_14_BIT = 0b00000000
 OUTPUT_16_BIT = 0b00010000
 
-_SO_14BIT = 0.6 # μT per digit when 14bit mode
-_SO_16BIT = 0.15 # μT per digit when 16bit mode
+_SO_14BIT = 0.6  # μT per digit when 14bit mode
+_SO_16BIT = 0.15  # μT per digit when 16bit mode
+
 
 class AK8963:
     """Class which provides interface to AK8963 magnetometer."""
+
     def __init__(
         self, i2c, address=0x0c,
-        mode=MODE_CONTINOUS_MEASURE_1, output=OUTPUT_16_BIT,
+        mode=MODE_CONTINOUS_MEASURE_2, output=OUTPUT_16_BIT,
         offset=(0, 0, 0), scale=(1, 1, 1)
     ):
         self.i2c = i2c
@@ -104,7 +106,7 @@ class AK8963:
         X, Y, Z axis micro-Tesla (uT) as floats.
         """
         xyz = list(self._register_three_shorts(_HXL))
-        self._register_char(_ST2) # Enable updating readings again
+        self._register_char(_ST2)  # Enable updating readings again
 
         # Apply factory axial sensitivy adjustements
         xyz[0] *= self._adjustement[0]
