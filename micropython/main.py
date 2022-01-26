@@ -15,8 +15,6 @@ from light_strip_3 import LightStrip3
 from light_strip_4 import LightStrip4
 
 # NEO Pixel
-NUM_PIXELS = 10
-
 # SD Card VSPI
 # # https://randomnerdtutorials.com/esp32-microsd-card-arduino/
 # IMU MPU9250 I2C address 0x68
@@ -38,18 +36,15 @@ mc = MovementController(i2c_controller)
 sc = SoundController()
 cc = ConfigController()
 
-ls1 = LightSaberController(
-    LightStrip1().lc, mc, cc, sc
-)
-ls2 = LightSaberController(
-    LightStrip2().lc, mc, cc, sc
-)
-ls3 = LightSaberController(
-    LightStrip3().lc, mc, cc, sc
-)
-ls4 = LightSaberController(
-    LightStrip4().lc, mc, cc, sc
-)
+lstrip1 = LightStrip1()
+lstrip2 = LightStrip2()
+lstrip3 = LightStrip3()
+lstrip4 = LightStrip4()
+
+ls1 = LightSaberController(lstrip1.lc, mc, cc, sc)
+ls2 = LightSaberController(lstrip2.lc, mc, cc, sc)
+ls3 = LightSaberController(lstrip3.lc, mc, cc, sc)
+ls4 = LightSaberController(lstrip4.lc, mc, cc, sc)
 
 LED_STATUS_PIN = 16
 led_status = Pin(LED_STATUS_PIN, Pin.OUT)
