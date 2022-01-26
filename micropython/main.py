@@ -3,13 +3,12 @@ import time
 from machine import Pin
 # sd card
 import os
-from machine import SoftSPI
 from sdcard import SDCard
 
 # light
 import neopixel
 # imu
-from machine import SoftI2C, Timer
+from machine import Timer
 from mpu9250 import MPU9250
 # Sound
 from wavplayer import WavPlayer
@@ -17,12 +16,11 @@ from wavplayer import WavPlayer
 # Button
 from button import Debounce
 
+from i2c import I2CController
+from spi import SPIController
 # SD Card VSPI
 # # https://randomnerdtutorials.com/esp32-microsd-card-arduino/
-SPI_CS = 5
-SPI_MOSI = 23
-SPI_CLK = 18
-SPI_MISO = 19
+SPI_CS = 5  # SD card
 
 # NEO Pixel
 
@@ -39,8 +37,6 @@ BTN_RIGHT_PIN = 15
 
 # IMU MPU9250 I2C address 0x68
 # # https://randomnerdtutorials.com/esp32-i2c-communication-arduino-ide/
-I2C_SCL = 22
-I2C_SDA = 21
 
 # Audio MAX98357A I2S
 I2S_DOUT = 25
@@ -60,15 +56,9 @@ OPEN_CLOSE_TIME = 0.2
 
 class SDCardController:
 
-    def __init__(self) -> None:
-        # sd = SDCard(slot=2)  # sck=18, mosi=23, miso=19, cs=5
-        self.spisd = SoftSPI(
-            -1,
-            sck=Pin(SPI_CLK),
-            mosi=Pin(SPI_MOSI),
-            miso=Pin(SPI_MISO)
-        )
-        self.sd = SDCard(self.spisd, Pin(SPI_CS))
+    def __init__(self, spi_controller) -> None:
+        # # sd = SDCard(slot=2)  # sck=18, mosi=23, miso=19, cs=5
+        self.sd = SDCard(spi_controller.spi, Pin(SPI_CS))
         os.mount(self.sd, "/sd")
 
         # print('Root directory:{}'.format(os.listdir()))
@@ -213,10 +203,8 @@ class MovementController:
             print(f"movement magnitude {magnitude}")
         return magnitude > MOVE_THRESHOLD
 
-    def __init__(self) -> None:
-        # TODO: Refactor to be able to reuse i2c setup
-        self.i2c = SoftI2C(scl=Pin(I2C_SCL), sda=Pin(I2C_SDA))
-        self.sensor = MPU9250(self.i2c)
+    def __init__(self, i2c) -> None:
+        self.sensor = MPU9250(i2c.i2c)
 
         timer_0 = Timer(0)
         timer_0.init(period=MOVE_REFRESH_TIME,
@@ -447,10 +435,14 @@ class LightSaber:
         self.idle()
 
 
-sd = SDCardController()
+i2c_controller = I2CController()
+spi_controller = SPIController()
+
+sd = SDCardController(spi_controller)
 sc = SoundController()
 cc = ConfigController()
-mc = MovementController()
+
+mc = MovementController(i2c_controller)
 
 ls1 = LightSaber(LightController(LED1_PIN, NUM_PIXELS, cc), mc, cc, sc)
 ls2 = LightSaber(LightController(LED2_PIN, NUM_PIXELS, cc), mc, cc, sc)
