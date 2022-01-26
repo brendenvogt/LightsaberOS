@@ -36,6 +36,13 @@ mc = MovementController(i2c_controller)
 sc = SoundController()
 cc = ConfigController()
 
+# TODO: Write animations for each strip
+# TODO: Read animations for each strip
+# TODO: Have animations run simultaneously across all strips (May need timer to keep in sync and have regular write intervals)
+# TODO: Get sound to work in sync with lights with volume control
+# TODO: Get movements working better
+
+
 lstrip1 = LightStrip1()
 lstrip2 = LightStrip2()
 lstrip3 = LightStrip3()
