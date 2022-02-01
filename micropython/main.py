@@ -1,5 +1,6 @@
 from machine import Pin
 
+from light_strip import LightStrip1, LightStrip2, LightStrip3, LightStrip4
 from light_controller import LightStripController
 from sound_controller import SoundController
 from config_controller import ConfigController
@@ -9,10 +10,6 @@ from lightsaber_controller import LightSaberController
 from i2c import I2CController
 from spi import SPIController
 from button_controller import ButtonController
-from light_strip_1 import LightStrip1
-from light_strip_2 import LightStrip2
-from light_strip_3 import LightStrip3
-from light_strip_4 import LightStrip4
 
 # NEO Pixel
 # SD Card VSPI
@@ -42,16 +39,18 @@ cc = ConfigController()
 # TODO: Get sound to work in sync with lights with volume control
 # TODO: Get movements working better
 
+# LightStripController relies on LightStrip
 
-lstrip1 = LightStrip1()
-lstrip2 = LightStrip2()
-lstrip3 = LightStrip3()
-lstrip4 = LightStrip4()
 
-ls1 = LightSaberController(lstrip1.lc, mc, cc, sc)
-ls2 = LightSaberController(lstrip2.lc, mc, cc, sc)
-ls3 = LightSaberController(lstrip3.lc, mc, cc, sc)
-ls4 = LightSaberController(lstrip4.lc, mc, cc, sc)
+lsc1 = LightStripController(LightStrip1)
+lsc2 = LightStripController(LightStrip2)
+lsc3 = LightStripController(LightStrip3)
+lsc4 = LightStripController(LightStrip4)
+
+ls1 = LightSaberController(lsc1, mc, cc, sc)
+ls2 = LightSaberController(lsc2, mc, cc, sc)
+ls3 = LightSaberController(lsc3, mc, cc, sc)
+ls4 = LightSaberController(lsc4, mc, cc, sc)
 
 LED_STATUS_PIN = 16
 led_status = Pin(LED_STATUS_PIN, Pin.OUT)
