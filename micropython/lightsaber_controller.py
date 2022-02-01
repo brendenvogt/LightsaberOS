@@ -1,5 +1,7 @@
+from button_controller import *
 
-class LightSaberState:
+
+class LightsaberState:
     SELECT = 0
     CLOSE = 1
     OPEN = 2
@@ -9,41 +11,58 @@ class LightSaberState:
     LOCK = 6
 
 
-class LightSaberController:
+class LightsaberController:
 
-    state = LightSaberState.SELECT
+    state = LightsaberState.SELECT
 
-    def __init__(self, lc, mc, cc, sc):
+    def __init__(self, lc, mc, cc, sc, bc):
         self.lc = lc
-        self.lc.set_color(cc.current_font.color)
+        self.lc.set_color(cc.current_font.color)  # TODO Fix
         self.mc = mc
         self.cc = cc
         self.sc = sc
+        self.bc = bc
+        self.__init_button_controller()
+        # register button callbacks
+
+    def __init_button_controller(self):
+        self.bc.register_button(
+            ButtonType.UP, ButtonState.Pressed, self.up_button_pressed
+        )
+        self.bc.register_button(
+            ButtonType.CENTER, ButtonState.Pressed, self.center_button_pressed
+        )
+        self.bc.register_button(
+            ButtonType.DOWN, ButtonState.Pressed, self.down_button_pressed
+        )
+        self.bc.register_button(
+            ButtonType.DOWN, ButtonState.Released, self.down_button_released
+        )
 
     def up_button_pressed(self):
-        if self.state == LightSaberState.IDLE or self.state == LightSaberState.MOVE:
+        if self.state == LightsaberState.IDLE or self.state == LightsaberState.MOVE:
             # hit
             self.hit()
             pass
-        elif self.state == LightSaberState.SELECT:
+        elif self.state == LightsaberState.SELECT:
             # select next
             self.next()
             pass
         pass
 
     def center_button_pressed(self):
-        if self.state == LightSaberState.IDLE or self.state == LightSaberState.MOVE:
+        if self.state == LightsaberState.IDLE or self.state == LightsaberState.MOVE:
             self.close()
-        elif self.state == LightSaberState.SELECT:
+        elif self.state == LightsaberState.SELECT:
             self.open()
         pass
 
     def down_button_pressed(self):
-        if self.state == LightSaberState.IDLE or self.state == LightSaberState.MOVE:
+        if self.state == LightsaberState.IDLE or self.state == LightsaberState.MOVE:
             # lock
             self.lock()
             pass
-        elif self.state == LightSaberState.SELECT:
+        elif self.state == LightsaberState.SELECT:
             # select prev
             self.previous()
             pass
@@ -51,12 +70,12 @@ class LightSaberController:
         pass
 
     def down_button_released(self):
-        if self.state == LightSaberState.LOCK:
+        if self.state == LightsaberState.LOCK:
             self.unlock()
 
     def open(self):
         print("Opening")
-        self.state = LightSaberState.OPEN
+        self.state = LightsaberState.OPEN
         self.lc.open()
         # open sound
         # self.sc.play(self.cc.get_filename(self.cc.open_filename))
@@ -65,7 +84,7 @@ class LightSaberController:
     def close(self):
         print("Closing")
         self.mc.unregister_callback()
-        self.state = LightSaberState.CLOSE
+        self.state = LightsaberState.CLOSE
         self.lc.close()
         # close sound
         # self.sc.play(self.cc.get_filename(self.cc.close_filename))
@@ -89,7 +108,7 @@ class LightSaberController:
 
     def idle(self):
         print("Idling")
-        self.state = LightSaberState.IDLE
+        self.state = LightsaberState.IDLE
         self.lc.idle()
         # idle sound
         # begin move detection
@@ -97,12 +116,12 @@ class LightSaberController:
 
     def select(self):
         print("Selecting")
-        self.state = LightSaberState.SELECT
+        self.state = LightsaberState.SELECT
 
     def hit(self):
         print("Hitting")
         self.mc.unregister_callback()
-        self.state = LightSaberState.HIT
+        self.state = LightsaberState.HIT
         self.lc.hit()
         # hit sound
         self.idle()
@@ -110,7 +129,7 @@ class LightSaberController:
     def lock(self):
         print("Locking")
         self.mc.unregister_callback()
-        self.state = LightSaberState.LOCK
+        self.state = LightsaberState.LOCK
         self.lc.lock()
         # lock sound
 
@@ -129,7 +148,7 @@ class LightSaberController:
 
     def move(self):
         print("Moving")
-        self.state = LightSaberState.MOVE
+        self.state = LightsaberState.MOVE
         self.lc.move()
         # move sound
 
