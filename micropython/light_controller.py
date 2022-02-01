@@ -1,17 +1,12 @@
 import time
-from machine import Pin
-import neopixel
 
 OPEN_CLOSE_TIME = 0.2
 
 
 class LightStripController:
 
-    def __init__(self, pin, pixels) -> None:
-        self.pin = Pin(pin, Pin.OUT)
-        self.pixel_count = pixels
-        self.np = neopixel.NeoPixel(self.pin, self.pixel_count)
-
+    def __init__(self, light_strip) -> None:
+        self.light_strip = light_strip
         self.open_time = OPEN_CLOSE_TIME  # time to open or close
         # time per pixel on open or close
         self.pixel_delay = int(self.open_time/self.pixel_count*1000)
