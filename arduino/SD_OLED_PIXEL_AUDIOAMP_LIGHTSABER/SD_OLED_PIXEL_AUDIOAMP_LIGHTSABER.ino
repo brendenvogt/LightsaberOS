@@ -64,7 +64,6 @@ AudioOutputI2S *out = nullptr;
 struct DebouncedButton {
   uint8_t pin;
   bool stablePressed;
-  bool lastStablePressed;
   bool rawLastPressed;
   uint32_t lastChangeMs;
   uint32_t pressedSinceMs;
@@ -72,10 +71,16 @@ struct DebouncedButton {
 };
 
 static const uint32_t DEBOUNCE_MS = 35;
-DebouncedButton btn1{BTN1_PIN, false, false, false, 0, 0, false};
-DebouncedButton btn2{BTN2_PIN, false, false, false, 0, 0, false};
+DebouncedButton btn1{BTN1_PIN, false, false, 0, 0, false};
+DebouncedButton btn2{BTN2_PIN, false, false, 0, 0, false};
 
-static bool buttonPressedEdge(DebouncedButton &b) {
+struct ButtonEvents {
+  bool pressed;
+  bool released;
+  bool isDown;
+};
+
+static ButtonEvents buttonUpdate(DebouncedButton &b) {
   bool rawPressed = (digitalRead(b.pin) == LOW);
 
   if (rawPressed != b.rawLastPressed) {
@@ -83,21 +88,24 @@ static bool buttonPressedEdge(DebouncedButton &b) {
     b.lastChangeMs = millis();
   }
 
+  bool prevStable = b.stablePressed;
   if ((millis() - b.lastChangeMs) >= DEBOUNCE_MS) {
     b.stablePressed = b.rawLastPressed;
   }
 
-  // Track press timing for long-press
-  if (b.stablePressed && !b.lastStablePressed) {
+  bool pressedEdge = (b.stablePressed && !prevStable);
+  bool releasedEdge = (!b.stablePressed && prevStable);
+
+  // Track press timing for long-press (used by some callers)
+  if (pressedEdge) {
     b.pressedSinceMs = millis();
     b.longFired = false;
-  } else if (!b.stablePressed && b.lastStablePressed) {
+  }
+  if (releasedEdge) {
     b.longFired = false;
   }
 
-  bool pressedEdge = (b.stablePressed && !b.lastStablePressed);
-  b.lastStablePressed = b.stablePressed;
-  return pressedEdge;
+  return ButtonEvents{pressedEdge, releasedEdge, b.stablePressed};
 }
 
 static bool buttonLongPressEdge(DebouncedButton &b, uint32_t holdMs) {
@@ -787,9 +795,18 @@ void loop() {
   audioLoop();
 
   // Buttons
-  bool b1 = buttonPressedEdge(btn1);
-  bool b2 = buttonPressedEdge(btn2);
-  bool b2Long = buttonLongPressEdge(btn2, 700);
+  ButtonEvents b1e = buttonUpdate(btn1);
+  ButtonEvents b2e = buttonUpdate(btn2);
+
+  // Menu long-press threshold
+  static const uint32_t MENU_HOLD_MS = 1000;
+  static bool btn2LongHandled = false;
+  static uint32_t btn2PressMs = 0;
+
+  if (b2e.pressed) {
+    btn2PressMs = millis();
+    btn2LongHandled = false;
+  }
 
   // IMU sample only when saber is on-ish (reduce bus load)
   // Also throttle IMU reads so we don't starve audio / input handling.
@@ -808,33 +825,39 @@ void loop() {
 
   // BTN logic
   if (state == SaberState::Off) {
-    // Hold BTN2 to enter/exit menu while OFF
-    if (b2Long) {
+    // Long-press BTN2 enters/exits menu (only while OFF).
+    // We trigger on "still held after MENU_HOLD_MS" and we trigger at most once per press.
+    if (b2e.isDown && !btn2LongHandled && (millis() - btn2PressMs >= MENU_HOLD_MS)) {
+      btn2LongHandled = true;
       if (uiMode == UiMode::Menu) uiExitMenu();
       else uiEnterMenu();
     }
 
     if (uiMode == UiMode::Menu) {
-      // Menu controls: BTN1 adjusts value, BTN2 advances menu item
-      if (b1) uiAdjustCurrent();
-      if (b2) uiNextItem();
+      // Menu controls:
+      // - BTN1 press: adjust value immediately
+      // - BTN2 short press (release before long threshold): next item
+      if (b1e.pressed) uiAdjustCurrent();
+      if (b2e.released && !btn2LongHandled) uiNextItem();
     } else {
-      // Normal OFF controls
-      if (b2) {
-        (void)loadNextProfile();
-        pixels.setBrightness(profile.brightness);
-      }
-      if (b1) {
+      // Normal OFF controls:
+      // - BTN1 press: ignite
+      // - BTN2 short press (release before long threshold): next profile
+      if (b1e.pressed) {
         enterState(SaberState::TurningOn);
         playIgnite();
+      }
+      if (b2e.released && !btn2LongHandled) {
+        (void)loadNextProfile();
+        pixels.setBrightness(profile.brightness);
       }
     }
   } else {
     // Saber is on-ish
-    if (b1 && state != SaberState::Retracting) {
+    if (b1e.pressed && state != SaberState::Retracting) {
       enterState(SaberState::Retracting);
       playRetract();
-    } else if (b2) {
+    } else if (b2e.pressed) {
       // Allow spamming blaster while already in BlasterBlock (retrigger)
       triggerBlaster();
     }

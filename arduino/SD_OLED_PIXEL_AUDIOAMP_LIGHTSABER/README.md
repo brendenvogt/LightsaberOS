@@ -18,7 +18,7 @@ This is a “full lightsaber” sketch built on the original `SD_OLED_PIXEL_AUDI
 - **BTN2 (GPIO33)**:
   - From OFF: **cycle profiles**
   - From ON: **blaster block** (sound + red pulse)
-- **BTN2 long-press (hold ~0.7s, while OFF)**:
+- **BTN2 long-press (hold ~1.0s, while OFF)**:
   - Enter/exit the **OLED menu**
 
 ### OLED menu controls (while OFF)
