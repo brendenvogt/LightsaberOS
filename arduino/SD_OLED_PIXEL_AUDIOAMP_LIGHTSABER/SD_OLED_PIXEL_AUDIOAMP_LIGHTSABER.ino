@@ -419,6 +419,8 @@ static uint32_t effectColor = 0;
 
 // Clash gating
 static uint32_t lastClashMs = 0;
+static uint32_t lastBlasterMs = 0;
+static const uint32_t BLASTER_RETRIGGER_MS = 80; // prevent accidental double-fire spam
 
 // =====================
 // UI menu (2-button, OLED)
@@ -575,6 +577,27 @@ static void renderBladeWithOverlay(float baseLevel01) {
 static void enterState(SaberState s) {
   state = s;
   stateStartMs = millis();
+}
+
+static void triggerBlaster() {
+  // Make blaster feel snappy: always (re)start the sound immediately.
+  // This "retrigger" cuts the previous blaster instead of layering/mixing.
+  uint32_t now = millis();
+  if (now - lastBlasterMs < BLASTER_RETRIGGER_MS) return;
+  lastBlasterMs = now;
+
+  if (state == SaberState::Retracting || state == SaberState::Off || state == SaberState::TurningOn) return;
+  enterState(SaberState::BlasterBlock);
+  playBlaster();
+  startOverlay(pixels.Color(255, 0, 0), 220);
+}
+
+static void triggerClash() {
+  // Allow clash to retrigger (cuts the current sound) for snappy response.
+  if (state == SaberState::Retracting || state == SaberState::Off || state == SaberState::TurningOn) return;
+  enterState(SaberState::Clash);
+  playClash();
+  startOverlay(pixels.Color(255, 255, 255), 180);
 }
 
 static String pickFromCached(const SoundList &l) {
@@ -811,22 +834,19 @@ void loop() {
     if (b1 && state != SaberState::Retracting) {
       enterState(SaberState::Retracting);
       playRetract();
-    } else if (b2 && state == SaberState::On) {
-      enterState(SaberState::BlasterBlock);
-      playBlaster();
-      startOverlay(pixels.Color(255, 0, 0), 220);
+    } else if (b2) {
+      // Allow spamming blaster while already in BlasterBlock (retrigger)
+      triggerBlaster();
     }
   }
 
-  // IMU clash detection (only in ON state)
-  if (state == SaberState::On && imuValid) {
+  // IMU clash detection (on-ish states; allow retriggering clash for responsiveness)
+  if (imuValid && state != SaberState::Off && state != SaberState::TurningOn && state != SaberState::Retracting) {
     float gmag = sqrtf(imu.gx_rads * imu.gx_rads + imu.gy_rads * imu.gy_rads + imu.gz_rads * imu.gz_rads);
     uint32_t now = millis();
     if (gmag >= profile.clashGyroThresh && (now - lastClashMs) >= profile.clashCooldownMs) {
       lastClashMs = now;
-      enterState(SaberState::Clash);
-      playClash();
-      startOverlay(pixels.Color(255, 255, 255), 180);
+      triggerClash();
     }
   }
 
