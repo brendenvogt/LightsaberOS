@@ -7,6 +7,7 @@
 
 // Audio (ESP8266Audio)
 #include <AudioFileSourceSD.h>
+#include <AudioFileSourceBuffer.h>
 #include <AudioGeneratorWAV.h>
 #include <AudioOutputI2S.h>
 
@@ -42,6 +43,10 @@
 // IMU (MPU9250/MPU6500 family) I2C address
 #define IMU_ADDR 0x68
 
+// Audio volume (0.0 = mute, 1.0 = max). Start low; MAX98357 amps get loud fast.
+// Adjustable via the on-device menu.
+static float g_volume = 0.12f;
+
 // =====================
 // Objects
 // =====================
@@ -49,7 +54,8 @@ Adafruit_SSD1306 display(128, 32, &Wire, -1);
 Adafruit_NeoPixel pixels(PIXEL_COUNT, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 AudioGeneratorWAV *wav = nullptr;
-AudioFileSourceSD *file = nullptr;
+AudioFileSourceSD *sdFile = nullptr;
+AudioFileSourceBuffer *bufFile = nullptr;
 AudioOutputI2S *out = nullptr;
 
 // =====================
@@ -61,11 +67,13 @@ struct DebouncedButton {
   bool lastStablePressed;
   bool rawLastPressed;
   uint32_t lastChangeMs;
+  uint32_t pressedSinceMs;
+  bool longFired;
 };
 
 static const uint32_t DEBOUNCE_MS = 35;
-DebouncedButton btn1{BTN1_PIN, false, false, false, 0};
-DebouncedButton btn2{BTN2_PIN, false, false, false, 0};
+DebouncedButton btn1{BTN1_PIN, false, false, false, 0, 0, false};
+DebouncedButton btn2{BTN2_PIN, false, false, false, 0, 0, false};
 
 static bool buttonPressedEdge(DebouncedButton &b) {
   bool rawPressed = (digitalRead(b.pin) == LOW);
@@ -79,9 +87,25 @@ static bool buttonPressedEdge(DebouncedButton &b) {
     b.stablePressed = b.rawLastPressed;
   }
 
+  // Track press timing for long-press
+  if (b.stablePressed && !b.lastStablePressed) {
+    b.pressedSinceMs = millis();
+    b.longFired = false;
+  } else if (!b.stablePressed && b.lastStablePressed) {
+    b.longFired = false;
+  }
+
   bool pressedEdge = (b.stablePressed && !b.lastStablePressed);
   b.lastStablePressed = b.stablePressed;
   return pressedEdge;
+}
+
+static bool buttonLongPressEdge(DebouncedButton &b, uint32_t holdMs) {
+  if (!b.stablePressed) return false;
+  if (b.longFired) return false;
+  if (millis() - b.pressedSinceMs < holdMs) return false;
+  b.longFired = true;
+  return true;
 }
 
 // =====================
@@ -324,7 +348,12 @@ static void audioEnsureOut() {
   if (out != nullptr) return;
   out = new AudioOutputI2S();
   out->SetPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-  out->SetGain(0.25);
+  out->SetGain(g_volume);
+}
+
+static void audioSetVolume(float v) {
+  g_volume = constrain(v, 0.0f, 1.0f);
+  if (out != nullptr) out->SetGain(g_volume);
 }
 
 static void audioStop() {
@@ -333,9 +362,13 @@ static void audioStop() {
     delete wav;
     wav = nullptr;
   }
-  if (file) {
-    delete file;
-    file = nullptr;
+  if (bufFile) {
+    delete bufFile;
+    bufFile = nullptr;
+  }
+  if (sdFile) {
+    delete sdFile;
+    sdFile = nullptr;
   }
 }
 
@@ -343,9 +376,13 @@ static void audioPlayFile(const String &absPath) {
   audioStop();
   audioEnsureOut();
 
-  file = new AudioFileSourceSD(absPath.c_str());
+  // SD read latency spikes can cause audible crackles if the decoder underruns.
+  // Buffering smooths that out on ESP32.
+  sdFile = new AudioFileSourceSD(absPath.c_str());
+  static const uint32_t AUDIO_BUFFER_BYTES = 16 * 1024; // increase to 32*1024 if you have headroom
+  bufFile = new AudioFileSourceBuffer(sdFile, AUDIO_BUFFER_BYTES);
   wav = new AudioGeneratorWAV();
-  wav->begin(file, out);
+  wav->begin(bufFile, out);
 }
 
 static bool audioIsRunning() {
@@ -382,6 +419,93 @@ static uint32_t effectColor = 0;
 
 // Clash gating
 static uint32_t lastClashMs = 0;
+
+// =====================
+// UI menu (2-button, OLED)
+// =====================
+enum class UiMode : uint8_t { Normal, Menu };
+static UiMode uiMode = UiMode::Normal;
+
+enum class MenuItem : uint8_t {
+  Profile = 0,
+  Volume,
+  Color,
+  Brightness,
+  ClashThreshold,
+  COUNT
+};
+static MenuItem menuItem = MenuItem::Profile;
+
+struct ColorPreset { const char *name; uint8_t r, g, b; };
+static const ColorPreset COLOR_PRESETS[] = {
+  {"Blue",   0, 120, 255},
+  {"Green",  0, 255, 80},
+  {"Red",    255, 0, 0},
+  {"Purple", 160, 0, 255},
+  {"Cyan",   0, 255, 255},
+  {"White",  255, 255, 255},
+  {"Yellow", 255, 180, 0},
+};
+static uint8_t colorPresetIdx = 0;
+
+static const float VOLUME_STEPS[] = {0.03f, 0.05f, 0.08f, 0.12f, 0.16f, 0.20f, 0.25f};
+static uint8_t volumeIdx = 3; // 0.12 default
+
+static const uint8_t BRIGHTNESS_STEPS[] = {20, 40, 60, 80, 100, 120, 160, 200, 255};
+static uint8_t brightnessIdx = 1; // 40 default-ish
+
+static void applyColorPreset(uint8_t idx) {
+  idx = (uint8_t)(idx % (sizeof(COLOR_PRESETS) / sizeof(COLOR_PRESETS[0])));
+  colorPresetIdx = idx;
+  profile.bladeR = COLOR_PRESETS[idx].r;
+  profile.bladeG = COLOR_PRESETS[idx].g;
+  profile.bladeB = COLOR_PRESETS[idx].b;
+}
+
+static void uiEnterMenu() {
+  uiMode = UiMode::Menu;
+  menuItem = MenuItem::Profile;
+}
+
+static void uiExitMenu() {
+  uiMode = UiMode::Normal;
+}
+
+static void uiNextItem() {
+  uint8_t i = (uint8_t)menuItem;
+  i = (uint8_t)((i + 1) % (uint8_t)MenuItem::COUNT);
+  menuItem = (MenuItem)i;
+}
+
+static void uiAdjustCurrent() {
+  switch (menuItem) {
+    case MenuItem::Profile:
+      (void)loadNextProfile();
+      pixels.setBrightness(profile.brightness);
+      break;
+    case MenuItem::Volume:
+      volumeIdx = (uint8_t)((volumeIdx + 1) % (sizeof(VOLUME_STEPS) / sizeof(VOLUME_STEPS[0])));
+      audioSetVolume(VOLUME_STEPS[volumeIdx]);
+      break;
+    case MenuItem::Color:
+      applyColorPreset((uint8_t)(colorPresetIdx + 1));
+      break;
+    case MenuItem::Brightness:
+      brightnessIdx = (uint8_t)((brightnessIdx + 1) % (sizeof(BRIGHTNESS_STEPS) / sizeof(BRIGHTNESS_STEPS[0])));
+      profile.brightness = BRIGHTNESS_STEPS[brightnessIdx];
+      pixels.setBrightness(profile.brightness);
+      break;
+    case MenuItem::ClashThreshold: {
+      static const float TH[] = {3.5f, 4.5f, 6.0f, 7.5f, 9.0f};
+      static uint8_t thIdx = 2;
+      thIdx = (uint8_t)((thIdx + 1) % (sizeof(TH) / sizeof(TH[0])));
+      profile.clashGyroThresh = TH[thIdx];
+      break;
+    }
+    case MenuItem::COUNT:
+      break;
+  }
+}
 
 static uint32_t bladeBaseColor() {
   return pixels.Color(profile.bladeR, profile.bladeG, profile.bladeB);
@@ -480,6 +604,39 @@ static void oledRender(const ImuSample *imuOpt) {
   display.clearDisplay();
   display.setCursor(0, 0);
 
+  if (uiMode == UiMode::Menu) {
+    display.println("MENU");
+    display.setCursor(0, 10);
+    switch (menuItem) {
+      case MenuItem::Profile:
+        display.print("Profile: ");
+        display.println(profile.name);
+        break;
+      case MenuItem::Volume:
+        display.print("Volume: ");
+        display.println(g_volume, 2);
+        break;
+      case MenuItem::Color:
+        display.print("Color: ");
+        display.println(COLOR_PRESETS[colorPresetIdx].name);
+        break;
+      case MenuItem::Brightness:
+        display.print("Bright: ");
+        display.println((int)profile.brightness);
+        break;
+      case MenuItem::ClashThreshold:
+        display.print("ClashG: ");
+        display.println(profile.clashGyroThresh, 1);
+        break;
+      case MenuItem::COUNT:
+        break;
+    }
+    display.setCursor(0, 22);
+    display.print("B1=chg B2=next");
+    display.display();
+    return;
+  }
+
   // Line 1: state + profile
   const char *st = "OFF";
   switch (state) {
@@ -569,6 +726,36 @@ void setup() {
   pixels.setBrightness(profile.brightness);
   delay(600);
 
+  // Initialize menu indices based on current values (best-effort)
+  {
+    float best = 999.0f;
+    for (uint8_t i = 0; i < (sizeof(VOLUME_STEPS) / sizeof(VOLUME_STEPS[0])); i++) {
+      float d = fabsf(VOLUME_STEPS[i] - g_volume);
+      if (d < best) { best = d; volumeIdx = i; }
+    }
+  }
+  {
+    uint8_t bestI = 0;
+    uint16_t bestD = 0xFFFF;
+    for (uint8_t i = 0; i < (sizeof(COLOR_PRESETS) / sizeof(COLOR_PRESETS[0])); i++) {
+      int dr = (int)profile.bladeR - (int)COLOR_PRESETS[i].r;
+      int dg = (int)profile.bladeG - (int)COLOR_PRESETS[i].g;
+      int db = (int)profile.bladeB - (int)COLOR_PRESETS[i].b;
+      uint16_t d = (uint16_t)(abs(dr) + abs(dg) + abs(db));
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+    applyColorPreset(bestI);
+  }
+  {
+    uint8_t bestI = 0;
+    uint16_t bestD = 0xFFFF;
+    for (uint8_t i = 0; i < (sizeof(BRIGHTNESS_STEPS) / sizeof(BRIGHTNESS_STEPS[0])); i++) {
+      uint16_t d = (uint16_t)abs((int)profile.brightness - (int)BRIGHTNESS_STEPS[i]);
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+    brightnessIdx = bestI;
+  }
+
   enterState(SaberState::Off);
 }
 
@@ -579,6 +766,7 @@ void loop() {
   // Buttons
   bool b1 = buttonPressedEdge(btn1);
   bool b2 = buttonPressedEdge(btn2);
+  bool b2Long = buttonLongPressEdge(btn2, 700);
 
   // IMU sample only when saber is on-ish (reduce bus load)
   // Also throttle IMU reads so we don't starve audio / input handling.
@@ -597,13 +785,26 @@ void loop() {
 
   // BTN logic
   if (state == SaberState::Off) {
-    if (b2) {
-      (void)loadNextProfile();
-      pixels.setBrightness(profile.brightness);
+    // Hold BTN2 to enter/exit menu while OFF
+    if (b2Long) {
+      if (uiMode == UiMode::Menu) uiExitMenu();
+      else uiEnterMenu();
     }
-    if (b1) {
-      enterState(SaberState::TurningOn);
-      playIgnite();
+
+    if (uiMode == UiMode::Menu) {
+      // Menu controls: BTN1 adjusts value, BTN2 advances menu item
+      if (b1) uiAdjustCurrent();
+      if (b2) uiNextItem();
+    } else {
+      // Normal OFF controls
+      if (b2) {
+        (void)loadNextProfile();
+        pixels.setBrightness(profile.brightness);
+      }
+      if (b1) {
+        enterState(SaberState::TurningOn);
+        playIgnite();
+      }
     }
   } else {
     // Saber is on-ish
